@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+  <record id="view_sa40_device_tree" model="ir.ui.view">
+    <field name="name">sa40.device.tree</field>
+    <field name="model">sa40.device</field>
+    <field name="arch" type="xml">
+      <tree>
+        <field name="name"/>
+        <field name="protocol"/>
+        <field name="device_ip"/>
+        <field name="device_port"/>
+        <field name="last_sync"/>
+        <field name="create_external_attendance"/>
+      </tree>
+    </field>
+  </record>
+
+  <record id="view_sa40_device_form" model="ir.ui.view">
+    <field name="name">sa40.device.form</field>
+    <field name="model">sa40.device</field>
+    <field name="arch" type="xml">
+      <form>
+        <sheet>
+          <group>
+            <field name="name"/>
+            <field name="protocol"/>
+            <field name="device_ip"/>
+            <field name="device_port"/>
+            <field name="path"/>
+            <field name="timeout"/>
+            <field name="create_external_attendance"/>
+            <field name="last_sync" readonly="1"/>
+          </group>
+          <footer>
+            <button name="action_sync_now" type="object" string="Sync Now" class="btn-primary"/>
+          </footer>
+        </sheet>
+      </form>
+    </field>
+  </record>
+
+  <record id="menu_sa40_root" model="ir.ui.menu">
+    <field name="name">SA40 Sync</field>
+    <field name="sequence">10</field>
+  </record>
+  <record id="menu_sa40_config" model="ir.ui.menu">
+    <field name="name">Configuration</field>
+    <field name="parent_id" ref="menu_sa40_root"/>
+  </record>
+  <record id="action_sa40_devices" model="ir.actions.act_window">
+    <field name="name">Devices</field>
+    <field name="res_model">sa40.device</field>
+    <field name="view_mode">tree,form</field>
+  </record>
+  <menuitem id="menu_sa40_devices" name="Devices" parent="menu_sa40_config" action="action_sa40_devices"/>
+</odoo>
