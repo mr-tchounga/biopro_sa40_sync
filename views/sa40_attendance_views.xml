@@ -1,45 +1,47 @@
-<?xml version="1.0" encoding="utf-8"?>
+
 <odoo>
-  <record id="view_sa40_att_raw_tree" model="ir.ui.view">
-    <field name="name">sa40.attendance.raw.tree</field>
-    <field name="model">sa40.attendance.raw</field>
+  <record id="view_sa40_attendance_log_tree" model="ir.ui.view">
+    <field name="name">sa40.attendance.log.tree</field>
+    <field name="model">sa40.attendance.log</field>
     <field name="arch" type="xml">
       <tree>
         <field name="device_id"/>
-        <field name="user_id"/>
+        <field name="log_user_uid"/>
+        <field name="partner_id"/>
         <field name="timestamp"/>
         <field name="status"/>
       </tree>
     </field>
   </record>
 
-  <record id="view_sa40_att_raw_form" model="ir.ui.view">
-    <field name="name">sa40.attendance.raw.form</field>
-    <field name="model">sa40.attendance.raw</field>
+  <record id="view_sa40_attendance_log_form" model="ir.ui.view">
+    <field name="name">sa40.attendance.log.form</field>
+    <field name="model">sa40.attendance.log</field>
     <field name="arch" type="xml">
       <form>
         <sheet>
           <group>
             <field name="device_id"/>
-            <field name="user_id"/>
+            <field name="log_user_uid"/>
+            <field name="partner_id"/>
             <field name="timestamp"/>
             <field name="status"/>
+            <field name="raw"/>
           </group>
-          <notebook>
-            <page string="Raw">
-              <field name="raw" readonly="1"/>
-            </page>
-          </notebook>
         </sheet>
       </form>
     </field>
   </record>
 
-  <record id="action_sa40_attendance_raw" model="ir.actions.act_window">
-    <field name="name">Raw Attendance</field>
-    <field name="res_model">sa40.attendance.raw</field>
+  <record id="action_sa40_attendance_log_tree" model="ir.actions.act_window">
+    <field name="name">SA40 Logs</field>
+    <field name="res_model">sa40.attendance.log</field>
     <field name="view_mode">tree,form</field>
+    <!-- Primary tree view -->
+    <field name="view_id" ref="view_sa40_attendance_log_tree"/>
+    <!-- Provide ordered list of views (tree then form) -->
+    <field name="view_ids" eval="[(6,0,[ref('view_sa40_attendance_log_tree'), ref('view_sa40_attendance_log_form')])]"/>
   </record>
 
-  <menuitem id="menu_sa40_attendance" name="Attendance" parent="menu_sa40_root" action="action_sa40_attendance_raw"/>
+  <menuitem id="menu_sa40_attendance_logs" name="Logs" parent="menu_sa40_root" action="action_sa40_attendance_log_tree"/>
 </odoo>

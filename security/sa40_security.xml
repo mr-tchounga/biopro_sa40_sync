@@ -1,0 +1,7 @@
+
+<!-- <odoo>
+  <record model="res.groups" id="group_sa40_user">
+    <field name="name">SA40 User</field>
+    <field name="category_id" ref="base.module_category_hidden"/>
+  </record>
+</odoo> -->

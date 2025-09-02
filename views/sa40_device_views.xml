@@ -1,56 +1,79 @@
-<?xml version="1.0" encoding="utf-8"?>
 <odoo>
+  <!-- Devices tree -->
   <record id="view_sa40_device_tree" model="ir.ui.view">
     <field name="name">sa40.device.tree</field>
     <field name="model">sa40.device</field>
     <field name="arch" type="xml">
       <tree>
         <field name="name"/>
-        <field name="protocol"/>
         <field name="device_ip"/>
-        <field name="device_port"/>
-        <field name="last_sync"/>
-        <field name="create_external_attendance"/>
+        <field name="device_timeout"/>
+        <field name="active"/>
       </tree>
     </field>
   </record>
 
+  <!-- Devices form with header buttons -->
   <record id="view_sa40_device_form" model="ir.ui.view">
     <field name="name">sa40.device.form</field>
     <field name="model">sa40.device</field>
     <field name="arch" type="xml">
-      <form>
+      <form string="SA40 Device">
+        <header>
+          <!-- Visible, high-priority actions -->
+          <button name="test_connectivity" type="object" string="Test Connection" class="oe_highlight"/>
+          <button name="fetch_users_from_device" type="object" string="Fetch Users"/>
+          <button name="sync_data" type="object" string="Sync (persist)" attrs="{'invisible': [('active','=', False)]}"/>
+        </header>
+
         <sheet>
           <group>
-            <field name="name"/>
-            <field name="protocol"/>
-            <field name="device_ip"/>
-            <field name="device_port"/>
-            <field name="path"/>
-            <field name="timeout"/>
-            <field name="create_external_attendance"/>
-            <field name="last_sync" readonly="1"/>
+            <group>
+              <field name="name"/>
+              <field name="device_ip"/>
+              <field name="active"/>
+            </group>
+            <group>
+              <field name="device_timeout"/>
+              <field name="device_password" password="True"/>
+            </group>
           </group>
-          <footer>
-            <button name="action_sync_now" type="object" string="Sync Now" class="btn-primary"/>
-          </footer>
+
+          <group col="6" class="mt-2 mt-md-0">
+            <note colspan="6">
+              <label for="note"/>
+              <field name="note" invisible="1"/>
+              <div>
+                Use <b>Test Connection</b> to verify device reachability.<br/>
+                Use <b>Fetch Users</b> to import device users (create/update).<br/>
+                Use <b>Sync (persist)</b> to fetch and persist attendance logs.
+              </div>
+            </note>
+          </group>
         </sheet>
+
+        <footer>
+          <button string="Fetch Users" type="object" name="fetch_users_from_device" class="btn-primary"
+                  attrs="{'invisible': [('active','=', False)]}"/>
+          <button string="Sync (persist)" type="object" name="sync_data" class="btn-primary"
+                  attrs="{'invisible': [('active','=', False)]}"/>
+          <button string="Close" class="btn-default" special="cancel"/>
+        </footer>
       </form>
     </field>
   </record>
 
-  <record id="menu_sa40_root" model="ir.ui.menu">
-    <field name="name">SA40 Sync</field>
-    <field name="sequence">10</field>
-  </record>
-  <record id="menu_sa40_config" model="ir.ui.menu">
-    <field name="name">Configuration</field>
-    <field name="parent_id" ref="menu_sa40_root"/>
-  </record>
-  <record id="action_sa40_devices" model="ir.actions.act_window">
-    <field name="name">Devices</field>
+  <!-- window action for devices -->
+  <record id="action_sa40_device_tree" model="ir.actions.act_window">
+    <field name="name">SA40 Devices</field>
     <field name="res_model">sa40.device</field>
     <field name="view_mode">tree,form</field>
+    <field name="view_id" ref="view_sa40_device_tree"/>
+    <field name="view_ids" eval="[(6,0,[ref('view_sa40_device_tree'), ref('view_sa40_device_form')])]"/>
   </record>
-  <menuitem id="menu_sa40_devices" name="Devices" parent="menu_sa40_config" action="action_sa40_devices"/>
+
+  <!-- top-level menu & devices menu -->
+  <menuitem id="menu_sa40_root" name="SA40 Sync"/>
+  <menuitem id="menu_sa40_devices" name="Devices" parent="menu_sa40_root" action="action_sa40_device_tree"/>
+
 </odoo>

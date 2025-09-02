@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+
 <odoo>
   <record id="view_sa40_user_tree" model="ir.ui.view">
     <field name="name">sa40.user.tree</field>
@@ -6,9 +6,8 @@
     <field name="arch" type="xml">
       <tree>
         <field name="name"/>
-        <field name="device_user_id"/>
-        <field name="uid"/>
         <field name="device_id"/>
+        <field name="device_uid"/>
         <field name="partner_id"/>
       </tree>
     </field>
@@ -22,22 +21,21 @@
         <sheet>
           <group>
             <field name="name"/>
-            <field name="device_user_id"/>
-            <field name="uid"/>
             <field name="device_id"/>
+            <field name="device_uid"/>
+            <field name="device_user_id"/>
             <field name="partner_id"/>
-            <field name="privilege"/>
           </group>
         </sheet>
       </form>
     </field>
   </record>
 
-  <record id="action_sa40_users" model="ir.actions.act_window">
-    <field name="name">Device Users</field>
+  <record id="action_sa40_user_tree" model="ir.actions.act_window">
+    <field name="name">SA40 Users</field>
     <field name="res_model">sa40.user</field>
     <field name="view_mode">tree,form</field>
   </record>
 
-  <menuitem id="menu_sa40_users" name="Device Users" parent="menu_sa40_root" action="action_sa40_users"/>
+  <menuitem id="menu_sa40_users" name="Users" parent="menu_sa40_root" action="action_sa40_user_tree"/>
 </odoo>

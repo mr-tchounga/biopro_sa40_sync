@@ -1,0 +1,43 @@
+<odoo>
+  <record id="view_sa40_sync_wizard_form" model="ir.ui.view">
+    <field name="name">sa40.sync.wizard.form</field>
+    <field name="model">sa40.sync.wizard</field>
+    <field name="arch" type="xml">
+      <form string="Incoming SA40 Logs">
+        <sheet>
+          <group>
+            <field name="device_id" readonly="1"/>
+          </group>
+          <group>
+            <field name="line_ids" nolabel="1">
+              <tree editable="false">
+                <field name="log_user_uid"/>
+                <field name="partner_name"/>
+                <field name="timestamp"/>
+                <field name="status"/>
+                <field name="raw"/>
+              </tree>
+            </field>
+          </group>
+          <footer>
+            <button string="Import all" type="object" name="persist_selected" class="btn-primary"/>
+            <button string="Close" class="btn-default" special="cancel"/>
+          </footer>
+        </sheet>
+      </form>
+    </field>
+  </record>
+
+  <record id="action_sa40_sync_wizard" model="ir.actions.act_window">
+    <field name="name">Incoming SA40 Logs</field>
+    <field name="res_model">sa40.sync.wizard</field>
+    <field name="view_mode">form</field>
+    <field name="view_id" ref="view_sa40_sync_wizard_form"/>
+    <field name="target">new</field>
+  </record>
+
+  <menuitem id="menu_sa40_sync_wizard" name="Test Sync Wizard" parent="menu_sa40_root"
+          action="action_sa40_sync_wizard"/>
+
+
+</odoo>

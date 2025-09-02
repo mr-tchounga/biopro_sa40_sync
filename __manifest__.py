@@ -8,6 +8,7 @@
     "depends": ["base", 'mail', "hr"],
     "data": [
         "security/ir.model.access.csv",
+        # "security/sa40_security.xml",
         "views/sa40_device_views.xml",
         "views/sa40_user_views.xml",
         "views/sa40_attendance_views.xml",
