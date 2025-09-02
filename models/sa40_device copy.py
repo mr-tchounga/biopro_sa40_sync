@@ -3,8 +3,7 @@ from odoo import models, fields, api
 from odoo import fields as ofields
 from odoo.exceptions import UserError
 import logging
-from datetime import datetime, timezone
-import re
+from datetime import datetime
 
 # try import pyzk
 try:
@@ -224,123 +223,10 @@ class Sa40Device(models.Model):
             'created_uids': created_uids
         }
 
-    
-    # --- helper to parse timestamps robustly ---
-    def _parse_timestamp(self, ts, raw=None):
-        """
-        Robust timestamp parser. Accepts:
-        - datetime objects (returned as-is)
-        - ISO-8601 strings
-        - common formats like 'YYYY-MM-DD HH:MM:SS'
-        - epoch seconds (int/str)
-        - tries to extract date/time from `raw` string using regex
-        Returns a Python datetime (timezone-unaware UTC) or None.
-        """
-        # 1) already a datetime
-        if isinstance(ts, datetime):
-            return ts
-
-        # 2) numeric epoch (string or int)
-        try:
-            if ts is not None and (isinstance(ts, int) or (isinstance(ts, str) and ts.isdigit())):
-                epoch = int(ts)
-                # assume epoch seconds
-                return datetime.fromtimestamp(epoch, tz=timezone.utc).replace(tzinfo=None)
-        except Exception:
-            pass
-
-        # 3) try Odoo's parser (handles many ISO forms)
-        try:
-            if isinstance(ts, str) and ts.strip():
-                dt = ofields.Datetime.to_datetime(ts)
-                if isinstance(dt, datetime):
-                    return dt
-        except Exception:
-            pass
-
-        # 4) try python's fromisoformat (strip trailing Z)
-        try:
-            if isinstance(ts, str) and ts.strip():
-                s = ts.strip()
-                if s.endswith('Z'):
-                    s = s[:-1]
-                # handle microseconds / timezone naive iso
-                try:
-                    return datetime.fromisoformat(s)
-                except Exception:
-                    # fallback below
-                    pass
-        except Exception:
-            pass
-
-        # 5) try common strptime formats
-        common_formats = [
-            '%Y-%m-%d %H:%M:%S',
-            '%Y/%m/%d %H:%M:%S',
-            '%d-%m-%Y %H:%M:%S',
-            '%d/%m/%Y %H:%M:%S',
-            '%Y-%m-%dT%H:%M:%S',
-            '%Y-%m-%dT%H:%M:%S.%f',
-        ]
-        if isinstance(ts, str) and ts.strip():
-            for fmt in common_formats:
-                try:
-                    return datetime.strptime(ts.strip(), fmt)
-                except Exception:
-                    continue
-
-        # 6) try to extract a datetime-like substring from raw using regex
-        if raw:
-            # look for ISO-like groups: 2025-09-02 15:04:05 or 2025-09-02T15:04:05 or 02-09-2025 15:04:05
-            patterns = [
-                r'(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?)',
-                r'(\d{4}/\d{2}/\d{2}[ T]\d{2}:\d{2}:\d{2})',
-                r'(\d{2}-\d{2}-\d{4}[ T]\d{2}:\d{2}:\d{2})',
-                r'(\d{10,13})'  # epoch in seconds or ms
-            ]
-            for pat in patterns:
-                m = re.search(pat, raw)
-                if m:
-                    candidate = m.group(1)
-                    # if epoch-like numeric string
-                    if candidate.isdigit():
-                        try:
-                            val = int(candidate)
-                            # if it's millis (13 digits) convert to seconds
-                            if len(candidate) >= 13:
-                                val = val / 1000.0
-                            return datetime.fromtimestamp(val, tz=timezone.utc).replace(tzinfo=None)
-                        except Exception:
-                            pass
-                    # try iso/fromiso/strptime attempts on candidate
-                    try:
-                        dt = ofields.Datetime.to_datetime(candidate)
-                        if isinstance(dt, datetime):
-                            return dt
-                    except Exception:
-                        pass
-                    for fmt in common_formats + ['%Y-%m-%dT%H:%M:%S.%fZ', '%Y-%m-%dT%H:%M:%S%z']:
-                        try:
-                            # strip trailing Z before parsing if necessary
-                            cs = candidate
-                            if cs.endswith('Z'):
-                                cs = cs[:-1]
-                            return datetime.strptime(cs, fmt)
-                        except Exception:
-                            continue
-
-        # nothing worked
-        return None
-
-
     ####################################################################
     # Fetch attendances (no persistence)
     ####################################################################
     def fetch_attendances_from_device(self):
-        """
-        Fetch attendance records from device and return list of dicts:
-        [{'user_id':..., 'timestamp': ISO-string or None, 'status':..., 'raw':...}, ...]
-        """
         results = []
         for device in self:
             zk = conn = None
@@ -350,14 +236,12 @@ class Sa40Device(models.Model):
                 attendances = conn.get_attendance() or []
                 for a in attendances:
                     ts = getattr(a, 'timestamp', None)
-                    # keep raw string (repr) for debugging and timestamp fallback
-                    raw = str(a)
+                    # Keep timestamp as a python datetime object when possible
                     rec = {
                         'user_id': getattr(a, 'user_id', None),
-                        # keep original ts (may be None or datetime) — we'll parse later
-                        'timestamp': ts.isoformat() if isinstance(ts, datetime) else (ts if ts is not None else None),
+                        'timestamp': ts,   # keep datetime, don't isoformat()
                         'status': getattr(a, 'status', None) if hasattr(a, 'status') else None,
-                        'raw': raw,
+                        'raw': str(a),
                     }
                     results.append(rec)
             except Exception as exc:
@@ -375,39 +259,58 @@ class Sa40Device(models.Model):
                         pass
         return results
 
+
     ####################################################################
     # Persist attendances
     ####################################################################
     def persist_attendances(self, device, records):
-        """
-        Persist a list of attendance dicts into sa40.attendance.log for the given device (record).
-        Returns {'created': x, 'skipped_duplicates': y, 'invalid': z, 'fetched': n, 'invalid_samples': [...]}
-        """
         LogModel = self.env['sa40.attendance.log']
         created = skipped = invalid = 0
         fetched = len(records or [])
-        invalid_samples = []
 
         for rec in records or []:
             try:
                 device_user_id = rec.get('user_id')
-                ts_raw = rec.get('timestamp')
+                ts = rec.get('timestamp')
                 status = rec.get('status')
                 raw = rec.get('raw')
 
-                # parse timestamp robustly
-                parsed_dt = self._parse_timestamp(ts_raw, raw)
-                if parsed_dt is None:
+                # Debug/log the incoming rec so we can inspect problematic values
+                _logger.debug("Persisting attendance rec: device=%s user=%s ts=%s raw=%s", device.id, device_user_id, ts, raw)
+
+                # Validate timestamp: must exist and be parseable
+                if not ts:
+                    _logger.warning("Skipping attendance with missing timestamp: %s", rec)
                     invalid += 1
-                    # collect sample (max 10) for debugging
-                    if len(invalid_samples) < 10:
-                        invalid_samples.append({'user_id': device_user_id, 'timestamp': ts_raw, 'raw': raw})
                     continue
 
-                # convert parsed_dt to Odoo datetime string
-                ts_string = ofields.Datetime.to_string(parsed_dt)
+                # Try parsing timestamp robustly
+                parsed_ts = None
+                # If it's already a datetime, we're happy
+                if isinstance(ts, datetime):
+                    parsed_ts = ts
+                elif isinstance(ts, str):
+                    # Try Odoo helper first
+                    try:
+                        parsed_ts = ofields.Datetime.to_datetime(ts)
+                    except Exception:
+                        # fallback: try python's fromisoformat (handles 'T' and timezone)
+                        try:
+                            parsed_ts = datetime.fromisoformat(ts)
+                        except Exception:
+                            # final fallback: try common formats
+                            try:
+                                parsed_ts = datetime.strptime(ts, '%Y-%m-%d %H:%M:%S')
+                            except Exception:
+                                _logger.warning("Skipping attendance with invalid timestamp format: %s", ts)
+                                invalid += 1
+                                continue
+                else:
+                    _logger.warning("Skipping attendance with unsupported timestamp type: %r", type(ts))
+                    invalid += 1
+                    continue
 
-                # find linked partner via sa40.user (use sudo)
+                # find linked partner via sa40.user if any (use sudo for search to avoid access issues)
                 user = self.env['sa40.user'].sudo().search([
                     ('device_id', '=', device.id),
                     '|', ('device_user_id', '=', device_user_id), ('device_uid', '=', device_user_id)
@@ -417,7 +320,7 @@ class Sa40Device(models.Model):
                 vals = {
                     'device_id': device.id,
                     'log_user_uid': device_user_id,
-                    'timestamp': ts_string,
+                    'timestamp': parsed_ts,
                     'status': status,
                     'raw': raw,
                     'partner_id': partner_id,
@@ -427,21 +330,15 @@ class Sa40Device(models.Model):
                     LogModel.sudo().create(vals)
                     created += 1
                 except Exception as e:
-                    # likely duplicate by constraint; count as skipped
-                    _logger.debug('Skipping attendance creation (likely duplicate) for %s: %s', vals, e)
+                    # Most likely a DB uniqueness error (duplicate). Count as skipped.
+                    _logger.debug('Skipping attendance create (likely duplicate or error): %s | %s', vals, e)
                     skipped += 1
 
             except Exception:
                 _logger.exception('Unhandled error processing attendance record %s', rec)
                 invalid += 1
 
-        # log a few invalid samples at WARN level for immediate debugging
-        if invalid_samples:
-            for s in invalid_samples:
-                _logger.warning('SA40 invalid attendance sample: user=%s timestamp=%s raw=%s', s['user_id'], s['timestamp'], s['raw'])
-
-        return {'created': created, 'skipped_duplicates': skipped, 'invalid': invalid, 'fetched': fetched, 'invalid_samples': invalid_samples}
-
+        return {'created': created, 'skipped_duplicates': skipped, 'invalid': invalid, 'fetched': fetched}
 
 
     ####################################################################

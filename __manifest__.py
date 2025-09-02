@@ -11,6 +11,7 @@
         # "security/sa40_security.xml",
         "views/sa40_device_views.xml",
         "views/sa40_user_views.xml",
+        # "views/sa40_sync_wizard_views.xml",
         "views/sa40_attendance_views.xml",
         "data/cron_data.xml",
     ],

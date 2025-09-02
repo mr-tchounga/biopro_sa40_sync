@@ -2,3 +2,5 @@ id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
 access_sa40_device,access_sa40_device,model_sa40_device,base.group_user,1,1,1,1
 access_sa40_user,access_sa40_user,model_sa40_user,base.group_user,1,1,1,1
 access_sa40_attendance_log,access_sa40_attendance_log,model_sa40_attendance_log,base.group_user,1,1,1,1
+access_sa40_sync_wizard,access_sa40_sync_wizard,model_sa40_sync_wizard,base.group_user,1,1,1,1
+access_sa40_sync_line,access_sa40_sync_line,model_sa40_sync_line,base.group_user,1,1,1,1
