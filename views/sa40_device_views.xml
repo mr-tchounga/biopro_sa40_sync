@@ -23,7 +23,8 @@
           <!-- Visible, high-priority actions -->
           <button name="test_connectivity" type="object" string="Test Connection" class="oe_highlight"/>
           <button name="fetch_users_from_device" type="object" string="Fetch Users"/>
-          <button name="sync_data" type="object" string="Sync (persist)" attrs="{'invisible': [('active','=', False)]}"/>
+          <button name="sync_data" type="object" string="Fetch Attendance Logs" attrs="{'invisible': [('active','=', False)]}"/>
+          <button name="action_push_users" type="object" string="Push Users" class="oe_highlight"/>
         </header>
 
         <sheet>
@@ -46,7 +47,8 @@
               <div>
                 Use <b>Test Connection</b> to verify device reachability.<br/>
                 Use <b>Fetch Users</b> to import device users (create/update).<br/>
-                Use <b>Sync (persist)</b> to fetch and persist attendance logs.
+                Use <b>Fetch Attendance Logs</b> to import attendance records.<br/>
+                Use <b>Push Users</b> to send Odoo users to the device.
               </div>
             </note>
           </group>
@@ -58,6 +60,8 @@
           <button string="Sync (persist)" type="object" name="sync_data" class="btn-primary"
                   attrs="{'invisible': [('active','=', False)]}"/>
           <button string="Close" class="btn-default" special="cancel"/>
+          <button string="Push Device Users" type="object" name="action_push_users" class="btn-secondary"
+                  attrs="{'invisible': [('active','=', False)]}"/>
         </footer>
       </form>
     </field>

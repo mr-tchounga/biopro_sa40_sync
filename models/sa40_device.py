@@ -4,6 +4,7 @@ from odoo import fields as ofields
 from odoo.exceptions import UserError
 import logging
 from datetime import datetime
+import time
 
 # try import pyzk
 try:
@@ -438,3 +439,209 @@ class Sa40Device(models.Model):
             except Exception:
                 _logger.exception('Error syncing device %s in cron', dev.name)
         return True
+
+
+
+    def push_sa40_users_to_device(self, user_domain=None, only_with_partner=False, debug=False):
+        """
+        Verbose push of sa40.user to device; helpful for debugging updates not applying.
+        Set debug=True to log detailed info and to read back device users after each set_user.
+
+        Returns counters dict.
+        """
+        self._ensure_pyzk()
+        Sa40User = self.env['sa40.user'].sudo()
+
+        counters = {'pushed': 0, 'updated_local': 0, 'skipped': 0}
+        base_domain = user_domain or []
+
+        for device in self:
+            zk = conn = None
+            try:
+                zk, conn = self._connect_to_device(device)
+                conn.disable_device()
+
+                # read device users once
+                dev_users = conn.get_users() or []
+                dev_users_by_uid = {int(getattr(u, 'uid', 0)): getattr(u, 'name', '') for u in dev_users if getattr(u, 'uid', None) is not None}
+                used_uids = set(dev_users_by_uid.keys())
+                max_uid = 0 if not used_uids else max(used_uids)
+
+                domain = [('device_id', '=', device.id)] + base_domain
+                if only_with_partner:
+                    domain += [('partner_id', '!=', False)]
+                users = Sa40User.search(domain)
+
+                for user in users:
+                    uid = int(user.device_uid) if user.device_uid else 0
+                    if not uid:
+                        max_uid += 1
+                        while max_uid in used_uids:
+                            max_uid += 1
+                        uid = max_uid
+
+                    user_id_param = str(user.device_user_id or user.device_uid or (user.partner_id.id if user.partner_id else user.id))
+                    card_val = 0
+                    try:
+                        if user.partner_id and user.partner_id.biometric_id and str(user.partner_id.biometric_id).isdigit():
+                            card_val = int(user.partner_id.biometric_id)
+                    except Exception:
+                        card_val = 0
+
+                    device_name = (user.name or (user.partner_id.name if user.partner_id else 'Unknown'))[:31]
+
+                    if debug:
+                        _logger.info("PUSH DEBUG: device=%s sa40.user.id=%s -> uid=%s user_id=%s name=%s card=%s",
+                                     device.name, user.id, uid, user_id_param, device_name, card_val)
+
+                    try:
+                        success = conn.set_user(uid=int(uid),
+                                                name=device_name,
+                                                privilege=0,
+                                                password='',
+                                                group_id='',
+                                                user_id=user_id_param,
+                                                card=card_val)
+                        _logger.info("PUSH RESULT: sa40.user=%s set_user returned %s (device=%s uid=%s)",
+                                     user.id, success, device.name, uid)
+
+                        # Read back device users immediately if debug to verify name change
+                        if debug:
+                            after_users = conn.get_users() or []
+                            # find the user by uid in after_users
+                            found = None
+                            for au in after_users:
+                                try:
+                                    if int(getattr(au, 'uid', -1)) == int(uid):
+                                        found = au
+                                        break
+                                except Exception:
+                                    continue
+
+                            if found:
+                                dev_name_after = getattr(found, 'name', '')
+                                _logger.info("PUSH VERIFY: device=%s uid=%s name_before=%s name_after=%s",
+                                             device.name, uid, dev_users_by_uid.get(uid), dev_name_after)
+                                if dev_name_after != device_name:
+                                    # retry once with a reconnect (some firmware ignore immediate update)
+                                    _logger.warning("PUSH VERIFY: name mismatch after set_user. Attempting reconnect/retry for uid=%s", uid)
+                                    try:
+                                        # enable, disconnect, small delay, reconnect, disable
+                                        try:
+                                            conn.enable_device()
+                                        except Exception:
+                                            pass
+                                        try:
+                                            conn.disconnect()
+                                        except Exception:
+                                            pass
+                                        time.sleep(0.6)
+                                        # reconnect
+                                        zk2 = ZK(device.device_ip, port=int(device.device_port), timeout=int(device.device_timeout), password=int(device.device_password), force_udp=False)
+                                        conn2 = zk2.connect()
+                                        conn2.disable_device()
+                                        # retry set_user
+                                        retry_success = conn2.set_user(uid=int(uid),
+                                                                       name=device_name,
+                                                                       privilege=0,
+                                                                       password='',
+                                                                       group_id='',
+                                                                       user_id=user_id_param,
+                                                                       card=card_val)
+                                        _logger.info("PUSH RETRY RESULT: sa40.user=%s retry set_user returned %s", user.id, retry_success)
+                                        after_users2 = conn2.get_users() or []
+                                        dev_name_after2 = ''
+                                        for au in after_users2:
+                                            try:
+                                                if int(getattr(au, 'uid', -1)) == int(uid):
+                                                    dev_name_after2 = getattr(au, 'name', '')
+                                                    break
+                                            except Exception:
+                                                continue
+                                        _logger.info("PUSH RETRY VERIFY: device=%s uid=%s name_after_retry=%s", device.name, uid, dev_name_after2)
+                                        try:
+                                            conn2.enable_device()
+                                        except Exception:
+                                            pass
+                                        try:
+                                            conn2.disconnect()
+                                        except Exception:
+                                            pass
+                                        # if retry succeeded, update local state below as normal
+                                        if dev_name_after2 == device_name:
+                                            _logger.info("PUSH RETRY: update confirmed for uid=%s", uid)
+                                        else:
+                                            _logger.warning("PUSH RETRY: still not updated for uid=%s", uid)
+                                    except Exception as retry_exc:
+                                        _logger.exception("PUSH RETRY EXCEPTION for uid=%s: %s", uid, retry_exc)
+
+                            else:
+                                _logger.warning("PUSH VERIFY: uid=%s not found in device after set_user", uid)
+
+                        # persist local device_uid/device_user_id and device_id if changed
+                        vals = {}
+                        if int(user.device_uid or 0) != int(uid):
+                            vals['device_uid'] = int(uid)
+                        if (user.device_user_id or '') != user_id_param:
+                            vals['device_user_id'] = user_id_param
+                        if user.device_id.id != device.id:
+                            vals['device_id'] = device.id
+
+                        if vals:
+                            try:
+                                user.sudo().write(vals)
+                                counters['updated_local'] += 1
+                            except Exception:
+                                _logger.exception("Failed to update sa40.user after push: %s", user.id)
+
+                        counters['pushed'] += 1
+                        used_uids.add(int(uid))
+
+                    except Exception as exc:
+                        _logger.exception("Failed to push sa40.user %s to device %s: %s", user.id, device.name, exc)
+                        counters['skipped'] += 1
+
+            except Exception as exc:
+                _logger.exception("Failed connecting/pushing to device %s", device.name)
+                raise UserError(f"Failed to push users to device {device.name}: {exc}")
+            finally:
+                if conn:
+                    try:
+                        conn.enable_device()
+                    except Exception:
+                        pass
+                    try:
+                        conn.disconnect()
+                    except Exception:
+                        pass
+
+        return counters
+
+
+    # wrapper callable from button
+    def action_push_users(self):
+        """
+        Button action: push sa40.user rows assigned to this device.
+        """
+        counters_total = {'pushed': 0, 'created_local': 0, 'updated_local': 0, 'skipped': 0}
+        for device in self:
+            try:
+                res = device.push_sa40_users_to_device(user_domain=None, only_with_partner=False)
+                for k in counters_total:
+                    counters_total[k] += int(res.get(k, 0))
+            except Exception as exc:
+                _logger.exception("Error pushing sa40.users to device %s", device.name)
+                return {
+                    'type': 'ir.actions.client',
+                    'tag': 'display_notification',
+                    'params': {'title': 'Push Failed', 'message': str(exc), 'sticky': False, 'type': 'warning'}
+                }
+
+        msg = (f"Pushed {counters_total['pushed']} users — updated local {counters_total['updated_local']}, "
+               f"skipped {counters_total['skipped']}.")
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {'title': 'Push Complete', 'message': msg, 'sticky': False, 'type': 'success'}
+        }
+ 

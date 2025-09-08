@@ -268,14 +268,23 @@ class Sa40Device(models.Model):
         created = skipped = invalid = 0
         fetched = len(records or [])
 
+        # Ensure the cursor is not in an aborted state from previous errors.
+        # If there's nothing to rollback this is a no-op.
+        try:
+            self.env.cr.rollback()
+        except Exception:
+            # if rollback itself fails for some reason, just continue -
+            # we'll still use savepoints below to isolate errors.
+            pass
+
         for rec in records or []:
+            # Local try only for non-DB issues (parsing etc.)
             try:
                 device_user_id = rec.get('user_id')
                 ts = rec.get('timestamp')
                 status = rec.get('status')
                 raw = rec.get('raw')
 
-                # Debug/log the incoming rec so we can inspect problematic values
                 _logger.debug("Persisting attendance rec: device=%s user=%s ts=%s raw=%s", device.id, device_user_id, ts, raw)
 
                 # Validate timestamp: must exist and be parseable
@@ -284,21 +293,17 @@ class Sa40Device(models.Model):
                     invalid += 1
                     continue
 
-                # Try parsing timestamp robustly
+                # Try parsing timestamp robustly (same logic as before)
                 parsed_ts = None
-                # If it's already a datetime, we're happy
                 if isinstance(ts, datetime):
                     parsed_ts = ts
                 elif isinstance(ts, str):
-                    # Try Odoo helper first
                     try:
                         parsed_ts = ofields.Datetime.to_datetime(ts)
                     except Exception:
-                        # fallback: try python's fromisoformat (handles 'T' and timezone)
                         try:
                             parsed_ts = datetime.fromisoformat(ts)
                         except Exception:
-                            # final fallback: try common formats
                             try:
                                 parsed_ts = datetime.strptime(ts, '%Y-%m-%d %H:%M:%S')
                             except Exception:
@@ -310,31 +315,36 @@ class Sa40Device(models.Model):
                     invalid += 1
                     continue
 
-                # find linked partner via sa40.user if any (use sudo for search to avoid access issues)
-                user = self.env['sa40.user'].sudo().search([
-                    ('device_id', '=', device.id),
-                    '|', ('device_user_id', '=', device_user_id), ('device_uid', '=', device_user_id)
-                ], limit=1)
-                partner_id = user.partner_id.id if user and user.partner_id else False
-
-                vals = {
-                    'device_id': device.id,
-                    'log_user_uid': device_user_id,
-                    'timestamp': parsed_ts,
-                    'status': status,
-                    'raw': raw,
-                    'partner_id': partner_id,
-                }
-
+                # Isolate DB ops per-record in a savepoint so one bad record does not abort everything
                 try:
-                    LogModel.sudo().create(vals)
-                    created += 1
-                except Exception as e:
-                    # Most likely a DB uniqueness error (duplicate). Count as skipped.
-                    _logger.debug('Skipping attendance create (likely duplicate or error): %s | %s', vals, e)
+                    with self.env.cr.savepoint():
+                        # find linked partner via sa40.user if any (use sudo for search to avoid access issues)
+                        user = self.env['sa40.user'].sudo().search([
+                            ('device_id', '=', device.id),
+                            '|', ('device_user_id', '=', device_user_id), ('device_uid', '=', device_user_id)
+                        ], limit=1)
+                        partner_id = user.partner_id.id if user and user.partner_id else False
+
+                        vals = {
+                            'device_id': device.id,
+                            'log_user_uid': device_user_id,
+                            'timestamp': parsed_ts,
+                            'status': status,
+                            'raw': raw,
+                            'partner_id': partner_id,
+                        }
+
+                        LogModel.sudo().create(vals)
+                        created += 1
+
+                except Exception as db_exc:
+                    # Any DB error (unique constraint, integrity error, etc.) will be rolled back
+                    # to the savepoint automatically. Here we log and count it as skipped.
+                    _logger.exception("DB error while creating attendance log (rolled back to savepoint): %s | rec=%s", db_exc, rec)
                     skipped += 1
 
             except Exception:
+                # Any other unanticipated exception (parsing, etc.) - mark invalid
                 _logger.exception('Unhandled error processing attendance record %s', rec)
                 invalid += 1
 
@@ -428,3 +438,8 @@ class Sa40Device(models.Model):
             except Exception:
                 _logger.exception('Error syncing device %s in cron', dev.name)
         return True
+
+
+    
+    
+    
