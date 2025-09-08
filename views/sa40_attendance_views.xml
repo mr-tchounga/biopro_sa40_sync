@@ -39,8 +39,6 @@
     <field name="view_mode">tree,form</field>
     <!-- Primary tree view -->
     <field name="view_id" ref="view_sa40_attendance_log_tree"/>
-    <!-- Provide ordered list of views (tree then form) -->
-    <field name="view_ids" eval="[(6,0,[ref('view_sa40_attendance_log_tree'), ref('view_sa40_attendance_log_form')])]"/>
   </record>
 
   <menuitem id="menu_sa40_attendance_logs" name="Logs" parent="menu_sa40_root" action="action_sa40_attendance_log_tree"/>

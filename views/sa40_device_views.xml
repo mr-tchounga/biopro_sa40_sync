@@ -69,7 +69,6 @@
     <field name="res_model">sa40.device</field>
     <field name="view_mode">tree,form</field>
     <field name="view_id" ref="view_sa40_device_tree"/>
-    <field name="view_ids" eval="[(6,0,[ref('view_sa40_device_tree'), ref('view_sa40_device_form')])]"/>
   </record>
 
   <!-- top-level menu & devices menu -->
