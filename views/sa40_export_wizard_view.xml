@@ -1,0 +1,63 @@
+<!-- Wizard form -->
+<record id="view_sa40_export_wizard_form" model="ir.ui.view">
+    <field name="name">sa40.export.wizard.form</field>
+    <field name="model">sa40.export.wizard</field>
+    <field name="arch" type="xml">
+        <form string="Export SA40 Data">
+            <sheet>
+                <group>
+                    <field name="model_choice"/>
+                    <field name="export_format"/>
+                    <field name="export_selected"/>
+                </group>
+                <group>
+                    <field name="device_id"/>
+                    <field name="date_from"/>
+                    <field name="date_to"/>
+                </group>
+            </sheet>
+            <footer>
+                <button string="Export" type="object" name="action_export" class="btn-primary"/>
+                <button string="Cancel" class="btn-default" special="cancel"/>
+            </footer>
+        </form>
+    </field>
+</record>
+
+<!-- Add Export button to attendance list/form -->
+<record id="view_sa40_attendance_log_list" model="ir.ui.view" eval="False"/>
+<!-- If you already have views, open and edit them; else add snippet like below -->
+<record id="view_sa40_attendance_log_list_export" model="ir.ui.view">
+    <field name="name">sa40.attendance.log.list.export</field>
+    <field name="model">sa40.attendance.log</field>
+    <field name="arch" type="xml">
+        <list>
+            <header>
+                <button name="action_open_export_wizard" type="object" string="Export..." class="oe_highlight"/>
+            </header>
+            <field name="device_id"/>
+            <field name="log_user_uid"/>
+            <field name="timestamp"/>
+            <field name="status"/>
+            <field name="partner_id"/>
+        </list>
+    </field>
+</record>
+
+<!-- Add Export button to sa40.user list -->
+<record id="view_sa40_user_list_export" model="ir.ui.view">
+    <field name="name">sa40.user.list.export</field>
+    <field name="model">sa40.user</field>
+    <field name="arch" type="xml">
+        <list>
+            <header>
+                <button name="action_open_export_wizard" type="object" string="Export..." class="oe_highlight"/>
+            </header>
+            <field name="name"/>
+            <field name="device_id"/>
+            <field name="device_uid"/>
+            <field name="device_user_id"/>
+            <field name="partner_id"/>
+        </list>
+    </field>
+</record>

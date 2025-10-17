@@ -1,15 +1,15 @@
 <odoo>
-  <!-- Devices tree -->
-  <record id="view_sa40_device_tree" model="ir.ui.view">
-    <field name="name">sa40.device.tree</field>
+  <!-- Devices list -->
+  <record id="view_sa40_device_list" model="ir.ui.view">
+    <field name="name">sa40.device.list</field>
     <field name="model">sa40.device</field>
     <field name="arch" type="xml">
-      <tree>
+      <list>
         <field name="name"/>
         <field name="device_ip"/>
         <field name="device_timeout"/>
         <field name="active"/>
-      </tree>
+      </list>
     </field>
   </record>
 
@@ -23,7 +23,7 @@
           <!-- Visible, high-priority actions -->
           <button name="test_connectivity" type="object" string="Test Connection" class="oe_highlight"/>
           <button name="fetch_users_from_device" type="object" string="Fetch Users"/>
-          <button name="sync_data" type="object" string="Fetch Attendance Logs" attrs="{'invisible': [('active','=', False)]}"/>
+          <button name="sync_data" type="object" string="Fetch Attendance Logs" invisible="active==False"/>
           <button name="action_push_users" type="object" string="Push Users" class="oe_highlight"/>
         </header>
 
@@ -56,27 +56,27 @@
 
         <footer>
           <button string="Fetch Users" type="object" name="fetch_users_from_device" class="btn-primary"
-                  attrs="{'invisible': [('active','=', False)]}"/>
+                  invisible="active==False"/>
           <button string="Sync (persist)" type="object" name="sync_data" class="btn-primary"
-                  attrs="{'invisible': [('active','=', False)]}"/>
+                  invisible="active==False"/>
           <button string="Close" class="btn-default" special="cancel"/>
           <button string="Push Device Users" type="object" name="action_push_users" class="btn-secondary"
-                  attrs="{'invisible': [('active','=', False)]}"/>
+                  invisible="active==False"/>
         </footer>
       </form>
     </field>
   </record>
 
   <!-- window action for devices -->
-  <record id="action_sa40_device_tree" model="ir.actions.act_window">
+  <record id="action_sa40_device_list" model="ir.actions.act_window">
     <field name="name">SA40 Devices</field>
     <field name="res_model">sa40.device</field>
-    <field name="view_mode">tree,form</field>
-    <field name="view_id" ref="view_sa40_device_tree"/>
+    <field name="view_mode">list,form</field>
+    <field name="view_id" ref="view_sa40_device_list"/>
   </record>
 
   <!-- top-level menu & devices menu -->
   <menuitem id="menu_sa40_root" name="SA40 Sync"/>
-  <menuitem id="menu_sa40_devices" name="Devices" parent="menu_sa40_root" action="action_sa40_device_tree"/>
+  <menuitem id="menu_sa40_devices" name="Devices" parent="menu_sa40_root" action="action_sa40_device_list"/>
 
 </odoo>

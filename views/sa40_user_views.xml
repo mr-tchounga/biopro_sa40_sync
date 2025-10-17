@@ -1,15 +1,15 @@
 
 <odoo>
-  <record id="view_sa40_user_tree" model="ir.ui.view">
-    <field name="name">sa40.user.tree</field>
+  <record id="view_sa40_user_list" model="ir.ui.view">
+    <field name="name">sa40.user.list</field>
     <field name="model">sa40.user</field>
     <field name="arch" type="xml">
-      <tree>
+      <list>
         <field name="name"/>
         <field name="device_id"/>
         <field name="device_user_id"/>
         <field name="partner_id"/>
-      </tree>
+      </list>
     </field>
   </record>
 
@@ -30,11 +30,11 @@
     </field>
   </record>
 
-  <record id="action_sa40_user_tree" model="ir.actions.act_window">
+  <record id="action_sa40_user_list" model="ir.actions.act_window">
     <field name="name">SA40 Users</field>
     <field name="res_model">sa40.user</field>
-    <field name="view_mode">tree,form</field>
+    <field name="view_mode">list,form</field>
   </record>
 
-  <menuitem id="menu_sa40_users" name="Users" parent="menu_sa40_root" action="action_sa40_user_tree"/>
+  <menuitem id="menu_sa40_users" name="Users" parent="menu_sa40_root" action="action_sa40_user_list"/>
 </odoo>

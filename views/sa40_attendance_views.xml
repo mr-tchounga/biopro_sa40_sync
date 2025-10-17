@@ -1,16 +1,16 @@
 
 <odoo>
-  <record id="view_sa40_attendance_log_tree" model="ir.ui.view">
-    <field name="name">sa40.attendance.log.tree</field>
+  <record id="view_sa40_attendance_log_list" model="ir.ui.view">
+    <field name="name">sa40.attendance.log.list</field>
     <field name="model">sa40.attendance.log</field>
     <field name="arch" type="xml">
-      <tree>
+      <list>
         <field name="device_id"/>
         <field name="log_user_uid"/>
         <field name="partner_id"/>
         <field name="timestamp"/>
         <field name="status"/>
-      </tree>
+      </list>
     </field>
   </record>
 
@@ -33,13 +33,13 @@
     </field>
   </record>
 
-  <record id="action_sa40_attendance_log_tree" model="ir.actions.act_window">
+  <record id="action_sa40_attendance_log_list" model="ir.actions.act_window">
     <field name="name">SA40 Logs</field>
     <field name="res_model">sa40.attendance.log</field>
-    <field name="view_mode">tree,form</field>
-    <!-- Primary tree view -->
-    <field name="view_id" ref="view_sa40_attendance_log_tree"/>
+    <field name="view_mode">list,form</field>
+    <!-- Primary list view -->
+    <field name="view_id" ref="view_sa40_attendance_log_list"/>
   </record>
 
-  <menuitem id="menu_sa40_attendance_logs" name="Logs" parent="menu_sa40_root" action="action_sa40_attendance_log_tree"/>
+  <menuitem id="menu_sa40_attendance_logs" name="Logs" parent="menu_sa40_root" action="action_sa40_attendance_log_list"/>
 </odoo>

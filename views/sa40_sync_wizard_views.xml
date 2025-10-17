@@ -10,13 +10,13 @@
           </group>
           <group>
             <field name="line_ids" nolabel="1">
-              <tree editable="false">
+              <list editable="false">
                 <field name="log_user_uid"/>
                 <field name="partner_name"/>
                 <field name="timestamp"/>
                 <field name="status"/>
                 <field name="raw"/>
-              </tree>
+              </list>
             </field>
           </group>
           <footer>

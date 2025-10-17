@@ -1,6 +1,6 @@
 {
     "name": "SA40 Biopro Sync",
-    "version": "1.0.0",
+    "version": "18.0.1.0",
     "summary": "Sync ZKTeco SA40 attendance & users into Odoo",
     "description": "Fetch logs from an external SA40 sync server and map them to hr.employee and hr.attendance.",
     "category": "Human Resources",
