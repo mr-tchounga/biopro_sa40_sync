@@ -25,6 +25,8 @@
           <button name="fetch_users_from_device" type="object" string="Fetch Users"/>
           <button name="sync_data" type="object" string="Fetch Attendance Logs" invisible="active==False"/>
           <button name="action_push_users" type="object" string="Push Users" class="oe_highlight"/>
+          
+          <button name="action_verify_attendance_from_logs" type="object" string="Trigger Attendance" class="oe_highlight"/>
         </header>
 
         <sheet>
@@ -37,6 +39,7 @@
             <group>
               <field name="device_timeout"/>
               <field name="device_password" password="True"/>
+              <field name="tolerance_period"/>
             </group>
           </group>
 
@@ -49,6 +52,7 @@
                 Use <b>Fetch Users</b> to import device users (create/update).<br/>
                 Use <b>Fetch Attendance Logs</b> to import attendance records.<br/>
                 Use <b>Push Users</b> to send Odoo users to the device.
+                Use <b>Trigger Attendance</b> to trigger attendance rolecall based on logs.
               </div>
             </note>
           </group>
