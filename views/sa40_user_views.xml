@@ -8,7 +8,7 @@
         <field name="name"/>
         <field name="device_id"/>
         <field name="device_user_id"/>
-        <field name="partner_id"/>
+        <field name="user_id"/>
       </list>
     </field>
   </record>
@@ -23,7 +23,7 @@
             <field name="name"/>
             <field name="device_id"/>
             <field name="device_user_id"/>
-            <field name="partner_id"/>
+            <field name="user_id"/>
           </group>
         </sheet>
       </form>

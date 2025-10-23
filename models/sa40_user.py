@@ -9,7 +9,7 @@ class Sa40User(models.Model):
     device_id = fields.Many2one('sa40.device', required=True, ondelete='cascade')
     device_uid = fields.Integer(string='Device UID', help='Internal UID from device')
     device_user_id = fields.Char(string='Device user_id')
-    partner_id = fields.Many2one('res.partner', string='Related Partner', help='Link to a partner (student/teacher)')
+    user_id = fields.Many2one('res.users', string='Related User', help='Link to a user (student/teacher)')
 
     _sql_constraints = [
         ('uniq_device_uid_per_device', 'unique(device_id, device_uid)', 'Device UID must be unique per device'),

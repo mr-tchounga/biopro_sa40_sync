@@ -6,6 +6,9 @@
     "category": "Human Resources",
     "author": "Shifter",
     "depends": ["base", 'mail', "hr"],
+    'external_dependencies': {
+        'python': ['openpyxl'],
+    },
     "data": [
         "security/ir.model.access.csv",
         # "security/sa40_security.xml",
@@ -13,6 +16,7 @@
         "views/sa40_user_views.xml",
         # "views/sa40_sync_wizard_views.xml",
         "views/sa40_attendance_views.xml",
+        "views/sa40_export_wizard_view.xml",
         "data/cron_data.xml",
     ],
     "installable": True,

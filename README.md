@@ -65,7 +65,7 @@ Pushed 12 users — updated local 3, skipped 1.
   - `name`  
   - `device_uid`  
   - `device_user_id`  
-  - `partner_id` (optional, used for card/biometric id)  
+  - `user_id` (optional, used for card/biometric id)  
   - `device_id`  
 
 ---

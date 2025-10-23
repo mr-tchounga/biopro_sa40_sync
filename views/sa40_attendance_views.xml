@@ -7,7 +7,7 @@
       <list>
         <field name="device_id"/>
         <field name="log_user_uid"/>
-        <field name="partner_id"/>
+        <field name="user_id"/>
         <field name="timestamp"/>
         <field name="status"/>
       </list>
@@ -23,7 +23,7 @@
           <group>
             <field name="device_id"/>
             <field name="log_user_uid"/>
-            <field name="partner_id"/>
+            <field name="user_id"/>
             <field name="timestamp"/>
             <field name="status"/>
             <field name="raw"/>
