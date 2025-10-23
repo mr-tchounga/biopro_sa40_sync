@@ -638,15 +638,11 @@ class Sa40Device(models.Model):
         Visit all distinct dates found in the logs for this device and verify attendance
         for open sc.attendance.sheet on each date.
 
-        Algorithm:
-        - load all logs for this device (sudo)
-        - build list of parsed log entries with resolved res.users id when possible
-        - extract distinct dates from log timestamps
-        - for each date, find open sheets for that date and process each sheet:
-            - compute session window (session_start - tolerance) .. (session_end + small tail)
-            - pick logs in that window and keep earliest per user
-            - mark teacher present if a teacher log exists
-            - classify students on-time vs late and write M2M fields
+        - Mark teacher_presence = 'present' if a teacher log exists (no tolerance)
+        - Classify students as on-time or late (using device.tolerance_period)
+        - For late students append arrival time to sheet.note in format:
+            'Lastname Firstname (late): HH:MM'
+        - Collect dates that had NO open attendance sheets and notify at the end.
         """
         self.ensure_one()
         DeviceLog = self.env['sa40.attendance.log']
@@ -664,13 +660,12 @@ class Sa40Device(models.Model):
                 'params': {'title': 'Verification', 'message': 'No logs found for this device.', 'sticky': False},
             }
 
-        # Parse logs: build list of dicts with keys: 'log', 'ts_dt', 'user_id' (res.users)
+        # Parse logs: build list of dicts with keys: 'log', 'ts_dt', 'user'
         parsed_logs = []
         for log in logs_all:
             ts = log.timestamp
             if not ts:
                 continue
-            # normalize timestamp to datetime
             try:
                 ts_dt = ofields.Datetime.to_datetime(ts) if isinstance(ts, str) else ts
             except Exception:
@@ -680,7 +675,6 @@ class Sa40Device(models.Model):
                     _logger.warning("Unparseable timestamp %r for log %s; skipping", ts, log.id)
                     continue
 
-            # resolve res.users (prefer log.user_id, else try sa40.user mapping)
             user = log.user_id or False
             if not user:
                 sa_user = Sa40User.sudo().search([
@@ -689,7 +683,6 @@ class Sa40Device(models.Model):
                 ], limit=1)
                 user = sa_user.user_id if sa_user and sa_user.user_id else False
 
-            # store only if we have a user (we need user to match teacher/student)
             parsed_logs.append({'log': log, 'ts_dt': ts_dt, 'user': user, 'log_user_uid': log.log_user_uid})
 
         if not parsed_logs:
@@ -699,7 +692,7 @@ class Sa40Device(models.Model):
                 'params': {'title': 'Verification', 'message': 'No usable logs (with timestamps) found for this device.', 'sticky': False},
             }
 
-        # collect distinct dates found in logs (date() part of ts_dt)
+        # collect distinct dates found in logs
         dates_set = set()
         for p in parsed_logs:
             try:
@@ -719,6 +712,7 @@ class Sa40Device(models.Model):
         total_students_late = 0
         total_students_updated = 0
         processed_dates = 0
+        dates_without_open = []
 
         # process each date (sorted)
         for log_date in sorted(dates_set):
@@ -727,13 +721,11 @@ class Sa40Device(models.Model):
             open_sheets = ScSheet.sudo().search([('date', '=', log_date), ('lock_attendance', '=', 'open')])
             if not open_sheets:
                 _logger.info("No open sheets for device %s on %s", self.id, log_date)
+                dates_without_open.append(ofields.Date.to_string(log_date))
                 continue
 
-            # process each sheet for that date
             for sheet in open_sheets:
                 sheet = sheet.sudo()
-
-                # compute session start/end datetimes from float times
                 try:
                     start_hour = int(sheet.start_time)
                     start_minute = int((sheet.start_time % 1) * 60)
@@ -744,21 +736,19 @@ class Sa40Device(models.Model):
                 except Exception as e:
                     _logger.warning("Skipping sheet %s due to invalid times: %s", sheet.id, e)
                     continue
-                
 
-                # tolerance per-device and window
                 tolerance_minutes = float(self.tolerance_period or 0.0)
                 ontime_deadline = session_start + timedelta(minutes=tolerance_minutes)
                 window_start = session_start - timedelta(minutes=int(tolerance_minutes))
                 window_end = session_end + timedelta(minutes=5)
 
-                # filter parsed_logs to those inside the window (ts_dt)
+                # logs in window
                 window_logs = [p for p in parsed_logs if (p['ts_dt'] >= window_start and p['ts_dt'] <= window_end)]
                 if not window_logs:
                     _logger.debug("No logs in window for sheet %s (%s - %s)", sheet.id, window_start, window_end)
                     continue
 
-                # keep earliest log per user in this window
+                # earliest per user
                 earliest_by_user = {}
                 for p in window_logs:
                     user = p['user']
@@ -769,11 +759,10 @@ class Sa40Device(models.Model):
                     if uid not in earliest_by_user or ts_dt < earliest_by_user[uid]:
                         earliest_by_user[uid] = ts_dt
 
-                # skip if no user logs
                 if not earliest_by_user:
                     continue
 
-                # build batch student map (user_id -> student) and by partner fallback
+                # prepare student maps
                 batch_students = sheet.batch_id.sudo().student_ids if sheet.batch_id else self.env['op.student']
                 student_by_user = {s.user_id.id: s for s in batch_students if s.user_id}
                 students_by_partner = {}
@@ -785,6 +774,9 @@ class Sa40Device(models.Model):
                 present_ids = set(sheet.student_ids.ids)
                 late_ids = set(sheet.late_student_ids.ids)
                 excused_ids = set(sheet.excused_student_ids.ids)
+
+                # track note lines to append for late arrivals
+                note_lines_to_append = []
 
                 # teacher check (no tolerance)
                 if sheet.teacher_id and sheet.teacher_id.user_id:
@@ -842,6 +834,21 @@ class Sa40Device(models.Model):
                                 total_students_updated += 1
                                 changed = True
                                 _logger.info("Student %s marked LATE for sheet %s (log %s)", student.id, sheet.id, ts_dt)
+
+                                # prepare note line: "Lastname Firstname (late): HH:MM"
+                                ln = getattr(student, 'last_name', None) or ''
+                                fn = getattr(student, 'first_name', None) or ''
+                                if not ln and not fn:
+                                    # fallback to student name or partner name
+                                    display = (getattr(student, 'name', None) or (student.partner_id.name if student.partner_id else '')).strip()
+                                else:
+                                    display = f"{ln} {fn}".strip()
+                                arrival = ts_dt.strftime('%H:%M')
+                                note_line = f"{display} (late): {arrival}"
+                                # add only if not already in note
+                                existing_note = sheet.note or ''
+                                if note_line not in existing_note:
+                                    note_lines_to_append.append(note_line)
                     except Exception as e:
                         _logger.exception("Error classifying log for sheet %s user %s: %s", sheet.id, uid, e)
                         continue
@@ -852,29 +859,39 @@ class Sa40Device(models.Model):
                         with self.env.cr.savepoint():
                             before_present = sheet.student_ids.ids
                             before_late = sheet.late_student_ids.ids
-                            sheet.write({
+                            new_vals = {
                                 'student_ids': [(6, 0, list(present_ids))],
                                 'late_student_ids': [(6, 0, list(late_ids))],
                                 'excused_student_ids': [(6, 0, list(excused_ids))],
-                            })
+                            }
+                            # append note lines if any
+                            if note_lines_to_append:
+                                cur_note = sheet.note or ''
+                                appended = ("\n".join(note_lines_to_append)).strip()
+                                new_note = (cur_note + ("\n" if cur_note and not cur_note.endswith("\n") else "") + appended).strip()
+                                new_vals['note'] = new_note
+                            sheet.write(new_vals)
                             _logger.info("Wrote attendance for sheet %s on %s: present before=%s after=%s; late before=%s after=%s",
                                         sheet.id, log_date, before_present, sheet.student_ids.ids, before_late, sheet.late_student_ids.ids)
                     except Exception as e:
                         _logger.exception("Failed to write attendance changes for sheet %s: %s", sheet.id, e)
 
         # final notification
-        message = (f"Visited {processed_dates} log dates. Teachers marked present: {total_teacher_marked}. "
-                f"Students on-time: {total_students_present}. Late: {total_students_late}. "
-                f"Total student updates: {total_students_updated}.")
-
-        return {
-            'type': 'ir.actions.client',
-            'tag': 'display_notification',
-            'params': {'title': 'Attendance Verification', 'message': message, 'sticky': False, 'type': 'success'}
-        }
-
-
-
-
+        if len(dates_set) == len(dates_without_open):
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {'title': 'Attendance Verification', 'message': 'No editable attendance sheet found!', 'type': 'info'}
+            }
+            
+        else:            
+            message = (f"Visited {processed_dates} log dates. Teachers marked present: {total_teacher_marked}. "
+                    f"Students on-time: {total_students_present}. Late: {total_students_late}. "
+                    f"Total student updates: {total_students_updated}.")
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {'title': 'Attendance Verification', 'message': message, 'type': 'success'}
+            }
 
 
