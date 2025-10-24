@@ -638,17 +638,16 @@ class Sa40Device(models.Model):
         Visit all distinct dates found in the logs for this device and verify attendance
         for open sc.attendance.sheet on each date.
 
-        - Mark teacher_presence = 'present' if a teacher log exists (no tolerance)
+        - Use the EARLIEST log per res.users inside the sheet window (not the latest).
+        - Mark teacher_presence = 'present' if a teacher log exists (no tolerance).
         - Classify ALL students of the sheet's batch as on-time or late (using device.tolerance_period)
-        when a corresponding log exists (match by student.user_id OR by student.partner_id -> sa40.user)
+        when a corresponding log exists (match by student.user_id only).
         - For late students append arrival time to sheet.note in format: 'Lastname Firstname (late): HH:MM'
         - Collect dates that had NO open attendance sheets and notify at the end.
         """
         self.ensure_one()
         DeviceLog = self.env['sa40.attendance.log']
-        Sa40User = self.env['sa40.user']
         OpStudent = self.env['op.student']
-        OpFaculty = self.env['op.faculty']
         ScSheet = self.env['sc.attendance.sheet']
 
         # fetch all logs for this device (sudo)
@@ -660,7 +659,7 @@ class Sa40Device(models.Model):
                 'params': {'title': 'Verification', 'message': 'No logs found for this device.', 'sticky': False},
             }
 
-        # Parse logs: build list of dicts with keys: 'log', 'ts_dt', 'user', 'log_user_uid'
+        # Parse logs: build list of dicts with keys: 'log', 'ts_dt', 'user'
         parsed_logs = []
         for log in logs_all:
             ts = log.timestamp
@@ -675,9 +674,9 @@ class Sa40Device(models.Model):
                     _logger.warning("Unparseable timestamp %r for log %s; skipping", ts, log.id)
                     continue
 
-            # prefer attached res.users, otherwise resolve via sa40.user mapping
+            # prefer attached res.users only (no partner fallback)
             user = log.user_id or False
-            parsed_logs.append({'log': log, 'ts_dt': ts_dt, 'user': user, 'log_user_uid': log.log_user_uid})
+            parsed_logs.append({'log': log, 'ts_dt': ts_dt, 'user': user})
 
         if not parsed_logs:
             return {
@@ -742,46 +741,31 @@ class Sa40Device(models.Model):
                     _logger.debug("No logs in window for sheet %s (%s - %s)", sheet.id, window_start, window_end)
                     continue
 
-                # Build earliest per res.users.id and earliest per partner_id (via sa40.user mapping)
-                earliest_by_user = {}     # res.users.id -> datetime
-                earliest_by_partner = {}  # res.partner.id -> datetime
+                # Build EARLIEST-log per res.users.id (take the earliest timestamp inside the window)
+                earliest_by_user = {}  # res.users.id -> datetime
                 for p in window_logs:
+                    if not p['user']:
+                        continue
+                    uid = p['user'].id
                     ts_dt = p['ts_dt']
-                    # res.users mapping (if available from log)
-                    if p['user']:
-                        uid = p['user'].id
-                        if uid not in earliest_by_user or ts_dt < earliest_by_user[uid]:
-                            earliest_by_user[uid] = ts_dt
-                    # try resolve sa40.user by device uid to get partner
-                    if p['log_user_uid']:
-                        sa_user = Sa40User.sudo().search([
-                            ('device_id', '=', self.id),
-                            '|', ('device_user_id', '=', p['log_user_uid']), ('device_uid', '=', p['log_user_uid'])
-                        ], limit=1)
-                        if sa_user and sa_user.user_id:
-                            uid = sa_user.user_id.id
-                            if uid not in earliest_by_partner or ts_dt < earliest_by_partner[uid]:
-                                earliest_by_partner[uid] = ts_dt
+                    if uid not in earliest_by_user or ts_dt < earliest_by_user[uid]:
+                        earliest_by_user[uid] = ts_dt
 
-                if not earliest_by_user and not earliest_by_partner:
+                if not earliest_by_user:
+                    # no logs with attached res.users in this window -> nothing to do for this sheet
                     continue
 
-                # prepare student maps (all students of batch)
+                # prepare ALL students of the batch and quick lookup by user_id
                 batch_students = sheet.batch_id.sudo().student_ids if sheet.batch_id else self.env['op.student']
                 student_by_user = {s.user_id.id: s for s in batch_students if s.user_id}
-                students_by_partner = {}
-                for s in batch_students:
-                    if s.partner_id:
-                        students_by_partner.setdefault(s.partner_id.id, []).append(s)
 
                 changed = False
                 present_ids = set(sheet.student_ids.ids)
                 late_ids = set(sheet.late_student_ids.ids)
                 excused_ids = set(sheet.excused_student_ids.ids)
-
                 note_lines_to_append = []
 
-                # teacher check (no tolerance)
+                # teacher check (no tolerance) using earliest entry
                 if sheet.teacher_id and sheet.teacher_id.user_id:
                     teacher_uid = sheet.teacher_id.user_id.id
                     if teacher_uid in earliest_by_user:
@@ -795,19 +779,15 @@ class Sa40Device(models.Model):
                             except Exception as e:
                                 _logger.exception("Failed to mark teacher present for sheet %s: %s", sheet.id, e)
 
-                # Iterate ALL students in the batch and try to find an earliest log for each
+                # Iterate ALL students in the batch and try to find their earliest log in the window
                 for student in batch_students:
                     student_ts = None
 
-                    # 1) match by student.user_id
+                    # match by student.user_id only (per your NB)
                     if student.user_id and student.user_id.id in earliest_by_user:
                         student_ts = earliest_by_user[student.user_id.id]
 
-                    # 2) fallback match by partner -> earliest_by_partner
-                    if not student_ts and student.partner_id and student.partner_id.id in earliest_by_partner:
-                        student_ts = earliest_by_partner[student.partner_id.id]
-
-                    # if still no ts, this student had no log in the window -> skip (remains absent)
+                    # if no timestamp for this student -> absent (skip)
                     if not student_ts:
                         continue
 
@@ -815,7 +795,7 @@ class Sa40Device(models.Model):
                     if student_ts > session_end + timedelta(minutes=5):
                         continue
 
-                    # classify
+                    # classify based on the earliest timestamp found for this user in the window
                     try:
                         if student_ts <= ontime_deadline:
                             if student.id not in present_ids:
@@ -835,7 +815,6 @@ class Sa40Device(models.Model):
                                 total_students_updated += 1
                                 changed = True
                                 _logger.info("Student %s marked LATE for sheet %s (log %s)", student.id, sheet.id, student_ts)
-
                                 # prepare note line: "Lastname Firstname (late): HH:MM"
                                 ln = getattr(student, 'last_name', None) or ''
                                 fn = getattr(student, 'first_name', None) or ''
@@ -873,6 +852,7 @@ class Sa40Device(models.Model):
                                         sheet.id, log_date, before_present, sheet.student_ids.ids, before_late, sheet.late_student_ids.ids)
                     except Exception as e:
                         _logger.exception("Failed to write attendance changes for sheet %s: %s", sheet.id, e)
+
 
         # final notification
         if len(dates_set) == len(dates_without_open):
